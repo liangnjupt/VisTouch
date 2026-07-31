@@ -1,0 +1,50 @@
+[
+  {
+    "class_id": 0,
+    "material_english": "brass",
+    "material_pinyin": "huangtong",
+    "material_chinese": "黄铜"
+  },
+  {
+    "class_id": 1,
+    "material_english": "linen",
+    "material_pinyin": "mabu",
+    "material_chinese": "麻布"
+  },
+  {
+    "class_id": 2,
+    "material_english": "paper",
+    "material_pinyin": "baizhi",
+    "material_chinese": "白纸"
+  },
+  {
+    "class_id": 3,
+    "material_english": "polyester",
+    "material_pinyin": "dilun",
+    "material_chinese": "涤纶"
+  },
+  {
+    "class_id": 4,
+    "material_english": "silk",
+    "material_pinyin": "sichou",
+    "material_chinese": "丝绸"
+  },
+  {
+    "class_id": 5,
+    "material_english": "spandex",
+    "material_pinyin": "anlun",
+    "material_chinese": "氨纶"
+  },
+  {
+    "class_id": 6,
+    "material_english": "stone",
+    "material_pinyin": "shitou",
+    "material_chinese": "石头"
+  },
+  {
+    "class_id": 7,
+    "material_english": "wood",
+    "material_pinyin": "muban",
+    "material_chinese": "木板"
+  }
+]

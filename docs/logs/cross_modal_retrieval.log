@@ -1,0 +1,10 @@
+cross_modal_retrieval: 80 train / 40 test real cycle samples
+epoch  10 | train loss 2.079 | test R@1(audio->tactile) 0.025
+epoch  20 | train loss 1.427 | test R@1(audio->tactile) 0.050
+epoch  30 | train loss 1.399 | test R@1(audio->tactile) 0.050
+epoch  40 | train loss 0.750 | test R@1(audio->tactile) 0.075
+epoch  50 | train loss 0.570 | test R@1(audio->tactile) 0.050
+epoch  60 | train loss 0.342 | test R@1(audio->tactile) 0.050
+
+audio->tactile R@1=0.050 R@5=0.250 | tactile->audio R@1=0.050 R@5=0.175 (chance@1=0.025, chance@5=0.125)
+Saved weights + demo GIF + report.

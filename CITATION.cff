@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use the VisTouch dataset, please cite the paper below."
+type: dataset
+title: "VisTouch: A Large-Scale Synchronized Vision-Touch-Audio Dataset of Robotic Sliding Contact"
+version: 1.0.0
+date-released: "2026-07-30"
+authors:
+  - family-names: "Li"
+    given-names: "Ang"
+    affiliation: "Nanjing University of Posts and Telecommunications"
+  - family-names: "Wei"
+    given-names: "Xin"
+    affiliation: "Nanjing University of Posts and Telecommunications"
+  - family-names: "Wu"
+    given-names: "Dan"
+    affiliation: "Army Engineering University of PLA"
+  - family-names: "Zhou"
+    given-names: "Liang"
+    affiliation: "Nanjing University of Posts and Telecommunications"
+license: "CC-BY-4.0"
+keywords:
+  - multimodal dataset
+  - tactile sensing
+  - haptic signals
+  - material recognition
+  - cross-modal semantic communications
+  - vision-touch-audio
+abstract: >
+  VisTouch contains synchronized video, audio, and haptic (tactile force)
+  recordings captured by controlling a robot arm with a dexterous hand to
+  press and slide across everyday materials. The full corpus comprises more
+  than 1000 multimodal signal pairs across 47 material categories; this
+  public release covers the 8 categories used in the evaluation of the
+  companion paper (brass, linen, paper, polyester, silk, spandex, stone,
+  wood), packaged as 2000 timestamp-aligned audio/tactile/video sample
+  triplets with a predefined cross-pressure train/test split. All samples
+  are genuine sensor captures; the dataset contains no synthetic data.
+preferred-citation:
+  type: article
+  title: "Cross-Modal Semantic Communications"
+  authors:
+    - family-names: "Li"
+      given-names: "Ang"
+    - family-names: "Wei"
+      given-names: "Xin"
+    - family-names: "Wu"
+      given-names: "Dan"
+    - family-names: "Zhou"
+      given-names: "Liang"
+  journal: "IEEE Wireless Communications"
+  volume: 29
+  issue: 6
+  start: 144
+  end: 151
+  year: 2022
+  doi: "10.1109/MWC.008.2200180"
