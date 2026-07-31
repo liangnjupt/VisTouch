@@ -2,7 +2,7 @@
   <img src="docs/assets/vistouch_logo.png" alt="VisTouch" width="680">
 </p>
 
-<h3 align="center">A million-scale multimodal sensor corpus for robotic material understanding</h3>
+<h3 align="center">A large-scale synchronized vision–touch–audio dataset of robotic sliding contact</h3>
 
 <p align="center">
   <img alt="full corpus observations" src="https://img.shields.io/badge/full_corpus-million--scale_observations-ff7b00">
