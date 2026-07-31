@@ -2,12 +2,13 @@
   <img src="docs/assets/vistouch_logo.png" alt="VisTouch" width="680">
 </p>
 
-<h3 align="center">A large-scale synchronized vision–touch–audio dataset of robotic sliding contact</h3>
+<h3 align="center">A million-scale multimodal sensor corpus for robotic material understanding</h3>
 
 <p align="center">
-  <img alt="samples" src="https://img.shields.io/badge/samples-2000-orange">
-  <img alt="classes" src="https://img.shields.io/badge/materials-8_(of_47)-purple">
+  <img alt="full corpus observations" src="https://img.shields.io/badge/full_corpus-million--scale_observations-ff7b00">
+  <img alt="full corpus materials" src="https://img.shields.io/badge/full_corpus-47_materials-a371f7">
   <img alt="modalities" src="https://img.shields.io/badge/modalities-video_·_audio_·_haptic-red">
+  <img alt="public release" src="https://img.shields.io/badge/public_release-2000_triplets_·_8_classes-6e7681">
   <img alt="paper" src="https://img.shields.io/badge/IEEE_WCM_2022-10.1109%2FMWC.008.2200180-blue">
   <img alt="license" src="https://img.shields.io/badge/license-CC--BY--4.0_%2F_MIT-green">
 </p>
@@ -49,18 +50,23 @@
 (IEEE Wireless Communications, 2022)](https://doi.org/10.1109/MWC.008.2200180)
 by controlling a robot arm (UR3 + RH56BF3 dexterous hand) to press and
 slide across everyday materials while a camera, a microphone, and a tactile
-force sensor record the same contact event simultaneously. The full corpus
-contains **1000+ synchronized video–audio–haptic signal pairs across 47
-material categories**, and powers the paper's cross-modal signal recovery
-experiments.
+force sensor record the same contact event simultaneously.
 
-This repository open-sources the first public batch: the **8 material
-categories used in the paper's evaluation** — brass · linen · paper ·
-polyester · silk · spandex · stone · wood — packaged as **2000
-timestamp-aligned audio/tactile/video sample triplets** with a predefined
-cross-pressure train/test split. **Every sample is a genuine sensor
-capture; the dataset contains no synthetic data.** More categories will be
-released in future updates.
+The **full VisTouch research corpus spans 47 material categories and
+contains million-scale raw sensor observations** across video frames,
+audio waveform samples, and tactile measurements. The companion paper
+reports **1000+ synchronized video–audio–haptic signal pairs over all 47
+categories**, supporting cross-modal semantic encoding, retrieval, and
+haptic signal recovery research.
+
+This repository is the first curated public benchmark release: **2000
+timestamp-aligned audio/tactile/video triplets from 8 representative
+material categories** used in the paper's evaluation — brass · linen ·
+paper · polyester · silk · spandex · stone · wood — with a predefined
+cross-pressure train/test split. **Every released sample is a genuine
+sensor capture; no synthetic data is included.** Future updates will
+progressively release more of the 47-category corpus, additional paths,
+views, and benchmark tasks.
 
 <p align="center">
   <img src="docs/assets/device_setup.png" alt="capture rig" width="440"><br/>
