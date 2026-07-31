@@ -1,0 +1,10 @@
+cross_modal_generation (sound -> tactile): 1332 train / 668 test real samples
+epoch  10 | train MSE 0.3711 | test MAE 0.4400 | corr 0.788
+epoch  20 | train MSE 0.2841 | test MAE 0.4252 | corr 0.799
+epoch  30 | train MSE 0.2446 | test MAE 0.4365 | corr 0.781
+epoch  40 | train MSE 0.2123 | test MAE 0.4328 | corr 0.789
+epoch  50 | train MSE 0.2041 | test MAE 0.4406 | corr 0.795
+epoch  60 | train MSE 0.1818 | test MAE 0.4325 | corr 0.801
+
+Test MAE=0.4325 (z-normalized force), correlation=0.801
+Saved weights + demo GIF + report.
