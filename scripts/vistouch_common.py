@@ -32,6 +32,8 @@ OUT_VIDEO_DIR = os.path.join(OUT_DATASET_DIR, "video")
 SAMPLES_CSV = os.path.join(OUT_METADATA_DIR, "samples.csv")
 SESSIONS_CSV = os.path.join(OUT_METADATA_DIR, "sessions.csv")
 CLASSES_JSON = os.path.join(OUT_METADATA_DIR, "classes.json")
+CLIPS_CSV = os.path.join(OUT_METADATA_DIR, "clips_index.csv")     # 0.5 s non-overlapping clips
+FRAMES_CSV = os.path.join(OUT_METADATA_DIR, "frames_index.csv")   # per-video-frame tri-modal index
 
 DATASET_NAME = "VisTouch"
 

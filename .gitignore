@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .DS_Store
+
+# data files are hosted externally (see README Download section)
+dataset/*
+!dataset/.gitkeep

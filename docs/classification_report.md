@@ -1,15 +1,15 @@
 # VisTouch Baseline Classification Report
 
-Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = held-out 9N sessions. Segment granularity: `cycle`. Train samples: 80, test samples: 40. Chance level: 0.125.
+Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = held-out 9N sessions. Segment granularity: `half`. Train samples: 160, test samples: 80. Chance level: 0.125.
 
 ## Per-modality accuracy (RandomForest on hand-rolled features)
 
 | modality | test accuracy |
 |---|---|
-| tactile | 0.150 |
-| audio | 0.600 |
-| video | 0.575 |
-| **fused (all 3)** | **0.625** |
+| tactile | 0.175 |
+| audio | 0.512 |
+| video | 0.475 |
+| **fused (all 3)** | **0.725** |
 
 **Verdict: USABLE** (fused accuracy exceeds 2x chance level of 0.125).
 
@@ -22,18 +22,18 @@ Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = 
 ```
               precision    recall  f1-score   support
 
-       brass       0.00      0.00      0.00         5
-       linen       1.00      1.00      1.00         5
-       paper       0.33      0.40      0.36         5
-   polyester       1.00      0.40      0.57         5
-        silk       0.33      1.00      0.50         5
-     spandex       0.83      1.00      0.91         5
-       stone       1.00      1.00      1.00         5
-        wood       1.00      0.20      0.33         5
+       brass       1.00      0.10      0.18        10
+       linen       1.00      0.90      0.95        10
+       paper       0.50      0.80      0.62        10
+   polyester       0.56      0.90      0.69        10
+        silk       1.00      0.30      0.46        10
+     spandex       0.62      1.00      0.77        10
+       stone       0.91      1.00      0.95        10
+        wood       1.00      0.80      0.89        10
 
-    accuracy                           0.62        40
-   macro avg       0.69      0.62      0.58        40
-weighted avg       0.69      0.62      0.58        40
+    accuracy                           0.72        80
+   macro avg       0.82      0.73      0.69        80
+weighted avg       0.82      0.72      0.69        80
 
 ```
 

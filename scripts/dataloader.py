@@ -7,9 +7,14 @@ users select:
     for all 8 classes)
   - which modality/modalities to load (`modalities=("audio", "tactile")`)
   - which split (`split="train" | "test" | "val" | "all"`)
-  - which slice mode (`slice_modes=("cycle",)` for the single-envelope
-    segments used by the classification benchmark, or `"sliding"` for the
-    denser overlapping-window segments)
+  - which slice mode (`slice_modes=("half",)` for the contact half-wave
+    segments used by the benchmarks, or `"idle"` for the non-contact filler
+    segments; all segments are strictly non-overlapping and tile the valid
+    tri-modal timeline of the 24 raw sessions)
+
+For denser training views, `metadata/clips_index.csv` (0.5 s non-overlapping
+clips) and `metadata/frames_index.csv` (per-video-frame tri-modal alignment)
+index into the same segment files by time offset.
 
 Every sample in VisTouch is a genuine camera/microphone/tactile-sensor
 capture -- there is no synthetic/generated data in this release.
@@ -116,11 +121,11 @@ class VisTouchDataset(Dataset):
             load in __getitem__ (unselected modalities are set to None,
             saving I/O).
         split: "train", "val", "test", or "all".
-        slice_modes: subset of {"cycle", "sliding"}. "cycle" (default) are
-            the ~5 single-envelope-oscillation segments per session used
-            for the classification benchmark; "sliding" are the denser
-            fixed-length overlapping-window segments, offering more
-            samples per session as a secondary augmentation strategy.
+        slice_modes: subset of {"half", "idle"}. "half" (default) are the
+            contact half-wave segments (rise/fall phase of one press-slide
+            envelope oscillation) used by the benchmarks; "idle" are the
+            non-contact filler segments (useful as negatives / for contact
+            detection). Segments never overlap.
         video_max_frames: optionally cap the number of video frames loaded
             per sample (keeps memory bounded for quick experiments).
     """
@@ -131,7 +136,7 @@ class VisTouchDataset(Dataset):
         classes: Optional[Sequence[str]] = None,
         modalities: Sequence[str] = ALL_MODALITIES,
         split: str = "all",
-        slice_modes: Sequence[str] = ("cycle", "sliding"),
+        slice_modes: Sequence[str] = ("half",),
         video_max_frames: Optional[int] = None,
     ):
         self.root = root
@@ -216,7 +221,7 @@ def _main():
     parser.add_argument("--classes", nargs="*", default=None, help=f"subset of {CLASS_NAMES} (default: all)")
     parser.add_argument("--modalities", nargs="*", default=list(ALL_MODALITIES), choices=ALL_MODALITIES)
     parser.add_argument("--split", default="all", choices=("all", "train", "val", "test"))
-    parser.add_argument("--slice-modes", nargs="*", default=["cycle", "sliding"], choices=("cycle", "sliding"))
+    parser.add_argument("--slice-modes", nargs="*", default=["half"], choices=("half", "idle"))
     parser.add_argument("--batch-size", type=int, default=4)
     args = parser.parse_args()
 

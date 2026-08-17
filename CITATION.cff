@@ -32,9 +32,12 @@ abstract: >
   than 1000 multimodal signal pairs across 47 material categories; this
   public release covers the 8 categories used in the evaluation of the
   companion paper (brass, linen, paper, polyester, silk, spandex, stone,
-  wood), packaged as 2000 timestamp-aligned audio/tactile/video sample
-  triplets with a predefined cross-pressure train/test split. All samples
-  are genuine sensor captures; the dataset contains no synthetic data.
+  wood), packaged as 312 strictly non-overlapping, phase-labeled
+  audio/tactile/video segments that tile 24 continuous recording sessions,
+  indexed further into 3209 aligned 0.5-second clips and 51177 frame-level
+  tri-modal samples, with a predefined cross-pressure train/test split.
+  All signals are genuine sensor captures; the dataset contains no
+  synthetic data.
 preferred-citation:
   type: article
   title: "Cross-Modal Semantic Communications"

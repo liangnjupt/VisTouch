@@ -1,8 +1,0 @@
-Building features for 1252 train + 628 test samples (sliding segments)...
-  tactile  solo accuracy: 0.185
-  audio    solo accuracy: 0.591
-  video    solo accuracy: 0.662
-  fused    accuracy: 0.760
-
-Verdict: USABLE (fused acc=0.760, chance=0.125)
-Wrote report to C:\Users\liang\Desktop\VisTouch\VisTouch\docs\classification_report_sliding.md

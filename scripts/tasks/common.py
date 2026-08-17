@@ -41,7 +41,12 @@ def abspath(rel_path: str) -> str:
     return os.path.join(VISTOUCH_ROOT, *rel_path.split("/"))
 
 
-def load_samples(slice_modes=("cycle", "sliding"), splits=("train", "test")):
+def load_samples(slice_modes=("half",), splits=("train", "test")):
+    """Select physical segments from metadata/samples.csv.
+
+    slice_modes: "half" = contact half-wave segments (rise/fall phases of one
+    press-slide envelope oscillation; the benchmark unit), "idle" = the
+    non-contact filler segments that complete the session timeline."""
     with open(SAMPLES_CSV, "r", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     return [r for r in rows if r["slice_mode"] in slice_modes and r["split"] in splits]

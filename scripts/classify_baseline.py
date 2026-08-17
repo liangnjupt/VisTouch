@@ -15,7 +15,7 @@ accuracy is not clearly above chance (1/8 = 12.5%), the per-modality
 breakdown is used to diagnose which stage of the pipeline needs revisiting.
 
 Usage:
-    python classify_baseline.py [--slice-mode cycle|sliding]
+    python classify_baseline.py [--slice-mode half|idle]
 """
 from __future__ import annotations
 
@@ -166,7 +166,7 @@ def eval_modality(name, X_train, y_train, X_test, y_test):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--slice-mode", default="cycle", choices=("cycle", "sliding"))
+    parser.add_argument("--slice-mode", default="half", choices=("half", "idle"))
     args = parser.parse_args()
 
     ensure_dir(OUT_DOCS_DIR)
@@ -207,7 +207,7 @@ def main():
     ConfusionMatrixDisplay(cm, display_labels=label_names).plot(ax=ax, colorbar=False)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
     fig.tight_layout()
-    cm_name = "confusion_matrix.png" if tag == "cycle" else f"confusion_matrix_{tag}.png"
+    cm_name = "confusion_matrix.png" if tag == "half" else f"confusion_matrix_{tag}.png"
     cm_path = os.path.join(OUT_DOCS_DIR, cm_name)
     fig.savefig(cm_path, dpi=120)
     plt.close(fig)
@@ -274,7 +274,7 @@ def main():
         "generalization across pressure (3N/6N -> 9N), not just memorization of one recording.",
     ]
 
-    report_name = "classification_report.md" if tag == "cycle" else f"classification_report_{tag}.md"
+    report_name = "classification_report.md" if tag == "half" else f"classification_report_{tag}.md"
     out_path = os.path.join(OUT_DOCS_DIR, report_name)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

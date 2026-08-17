@@ -4,11 +4,9 @@ Learns a shared embedding space (contrastive / InfoNCE) between audio and
 tactile encoders so that a query clip in one modality retrieves the
 matching clip (same real press-slide event) in the other modality.
 
-Uses the canonical `cycle` segments only (one clean single-envelope-
-oscillation per sample; 80 train / 40 test) rather than the denser
-`sliding` windows, since heavily-overlapping sliding windows from the same
-session would otherwise create many near-duplicate "correct" matches and
-make retrieval@1 an ill-posed target.
+Uses the contact `half` segments (one half of a press-slide envelope
+oscillation per sample; strictly non-overlapping) and excludes the `idle`
+filler segments, which contain no contact signal to match on.
 
 Usage:
     python cross_modal_retrieval.py [--epochs 60] [--embed-dim 64]
@@ -148,9 +146,9 @@ def main():
     os.makedirs(WEIGHTS_DIR, exist_ok=True)
     os.makedirs(ASSETS_DIR, exist_ok=True)
 
-    train_rows = load_samples(slice_modes=("cycle",), splits=("train",))
-    test_rows = load_samples(slice_modes=("cycle",), splits=("test",))
-    print(f"cross_modal_retrieval: {len(train_rows)} train / {len(test_rows)} test real cycle samples")
+    train_rows = load_samples(slice_modes=("half",), splits=("train",))
+    test_rows = load_samples(slice_modes=("half",), splits=("test",))
+    print(f"cross_modal_retrieval: {len(train_rows)} train / {len(test_rows)} test real half-wave segments")
 
     train_loader = DataLoader(PairDataset(train_rows), batch_size=args.batch_size, shuffle=True, drop_last=True)
 
@@ -198,8 +196,8 @@ def main():
         f.write(
             "# VisTouch Task: Cross-Modal Retrieval\n\n"
             f"Two small 1D-CNN encoders (audio, tactile) trained with symmetric InfoNCE contrastive loss "
-            f"for {args.epochs} epochs on {len(train_rows)} real train `cycle` samples; evaluated on "
-            f"{len(test_rows)} held-out real test `cycle` samples (9N split).\n\n"
+            f"for {args.epochs} epochs on {len(train_rows)} real train `half` segments; evaluated on "
+            f"{len(test_rows)} held-out real test `half` segments (9N split).\n\n"
             "| query -> gallery | Recall@1 | Recall@5 | chance@1 | chance@5 |\n"
             "|---|---|---|---|---|\n"
             f"| audio -> tactile | {r1_a2t:.3f} | {r5_a2t:.3f} | {chance1:.3f} | {chance5:.3f} |\n"
