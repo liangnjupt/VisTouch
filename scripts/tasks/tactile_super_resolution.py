@@ -1,12 +1,12 @@
 """Task: tactile super-resolution / denoising.
 
 Reconstructs a clean, full-rate (100Hz) tactile force curve from a
-low-rate + noisy version of the *same real* curve. The corrupted input is
+low-rate + noisy version of the same materialized 2 s curve. The corrupted input is
 generated on-the-fly at training/eval time (downsample by SR_FACTOR, linear
 upsample back, add Gaussian noise) purely as a self-supervised training
-signal -- the ground truth being reconstructed is always the genuine
-captured tactile signal; nothing synthetic is added to the released
-dataset itself.
+signal -- the ground truth is the released curve deterministically
+interpolated from a real 0.5 s sensor window; this task never modifies the
+released dataset itself.
 
 Usage:
     python tactile_super_resolution.py [--epochs 40] [--sr-factor 5] [--noise-std 0.2]
@@ -147,7 +147,7 @@ def main():
 
     train_rows = load_samples(splits=("train",))
     test_rows = load_samples(splits=("test",))
-    print(f"tactile_super_resolution: {len(train_rows)} train / {len(test_rows)} test real samples")
+    print(f"tactile_super_resolution: {len(train_rows)} train / {len(test_rows)} test 2 s contact clips")
 
     train_ds = TactileSRDataset(train_rows, args.sr_factor, args.noise_std, seed=args.seed)
     test_ds = TactileSRDataset(test_rows, args.sr_factor, args.noise_std, seed=args.seed + 1)
@@ -192,15 +192,16 @@ def main():
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(
             "# VisTouch Task: Tactile Super-Resolution / Denoising\n\n"
-            f"Model: small 1D CNN (4 conv layers) trained {args.epochs} epochs on {len(train_ds)} real "
-            f"train tactile curves; evaluated on {len(test_ds)} held-out real test curves (9N split).\n\n"
+            f"Model: small 1D CNN (4 conv layers) trained {args.epochs} epochs on {len(train_ds)} "
+            f"materialized 2 s train tactile curves; evaluated on {len(test_ds)} held-out test curves "
+            f"(9N split).\n\n"
             f"Corruption (train+eval input only, never written back to the dataset): downsample by "
             f"{args.sr_factor}x then linearly upsample, + Gaussian noise (std={args.noise_std}).\n\n"
             "| metric | low-rate+noisy input (baseline) | model reconstruction |\n"
             "|---|---|---|\n"
             f"| MSE (z-normalized) | {mse_b:.4f} | {mse_m:.4f} |\n\n"
             f"**MSE improvement over the naive upsampled input: {improvement:.1f}%.** "
-            f"Pearson correlation between reconstruction and real ground truth: {corr:.3f}.\n\n"
+            f"Pearson correlation between reconstruction and released ground truth: {corr:.3f}.\n\n"
             f"![demo]({os.path.relpath(gif_path, DOCS_DIR).replace(os.sep, '/')})\n"
         )
     print(f"\nMSE improvement: {improvement:.1f}% | corr={corr:.3f}")

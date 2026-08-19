@@ -1,5 +1,5 @@
 """Baseline 8-class material classifier used to sanity-check that the
-exported/segmented VisTouch dataset is actually usable for its intended
+materialized 2-second VisTouch clip tier is usable for its intended
 task (material recognition from touch/sound/vision).
 
 Trains a RandomForest on lightweight, dependency-free features extracted
@@ -15,26 +15,27 @@ accuracy is not clearly above chance (1/8 = 12.5%), the per-modality
 breakdown is used to diagnose which stage of the pipeline needs revisiting.
 
 Usage:
-    python classify_baseline.py [--slice-mode half|idle]
+    python classify_baseline.py
 """
 from __future__ import annotations
 
-import argparse
 import csv
 import os
 
 import cv2
+import joblib
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, classification_report, confusion_matrix
 from sklearn.preprocessing import StandardScaler
 
 from dataloader import load_tactile, load_wav
-from vistouch_common import CLASS_NAMES, CLASS_TO_ID, OUT_DOCS_DIR, SAMPLES_CSV, VISTOUCH_ROOT, ensure_dir
+from vistouch_common import CLASS_NAMES, CLASS_TO_ID, CLIPS_CSV, OUT_DOCS_DIR, VISTOUCH_ROOT, ensure_dir
 
 AUDIO_SR = 16000
 N_BANDS = 20
@@ -43,7 +44,7 @@ VIDEO_STRIDE = 2  # process every Nth frame to keep this fast
 
 
 def load_samples(slice_mode: str):
-    with open(SAMPLES_CSV, "r", encoding="utf-8") as f:
+    with open(CLIPS_CSV, "r", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     return [r for r in rows if r["slice_mode"] == slice_mode]
 
@@ -138,6 +139,56 @@ def video_features(path: str) -> np.ndarray:
     ], dtype=np.float32)
 
 
+def representative_video_frame(path: str) -> np.ndarray:
+    cap = cv2.VideoCapture(path)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count // 2))
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        return np.zeros((480, 640, 3), dtype=np.uint8)
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
+def make_classification_gif(rows, model, scaler, out_path):
+    """Render one deterministic held-out clip per class with new predictions."""
+    selected = []
+    for material in CLASS_NAMES:
+        candidates = [r for r in rows if r["material_english"] == material]
+        if candidates:
+            selected.append(candidates[len(candidates) // 2])
+
+    tactile, audio, video, labels, _ = build_feature_table(selected)
+    fused = np.concatenate([tactile, audio, video], axis=1)
+    predictions = model.predict(scaler.transform(fused))
+    frames = [
+        representative_video_frame(os.path.join(VISTOUCH_ROOT, *r["video_path"].split("/")))
+        for r in selected
+    ]
+
+    fig, ax = plt.subplots(figsize=(7.2, 5.2))
+    ax.axis("off")
+
+    def draw(i):
+        ax.clear()
+        ax.axis("off")
+        truth = CLASS_NAMES[labels[i]]
+        prediction = CLASS_NAMES[predictions[i]]
+        correct = truth == prediction
+        ax.imshow(frames[i])
+        ax.set_title(
+            f"true: {truth}   |   predicted: {prediction} "
+            f"[{'correct' if correct else 'incorrect'}]",
+            color="#159447" if correct else "#c0392b",
+            fontsize=12,
+        )
+        fig.suptitle("VisTouch material recognition (fused audio + tactile + video)", fontsize=13)
+
+    animation = FuncAnimation(fig, draw, frames=len(selected), interval=1200)
+    animation.save(out_path, writer=PillowWriter(fps=1))
+    plt.close(fig)
+
+
 def build_feature_table(rows, cache_video=True):
     tac_list, aud_list, vid_list, labels, ids = [], [], [], [], []
     for r in rows:
@@ -148,7 +199,7 @@ def build_feature_table(rows, cache_video=True):
         aud_list.append(audio_features(audio))
         vid_list.append(video_features(video_path))
         labels.append(CLASS_TO_ID[r["material_english"]])
-        ids.append(r["sample_id"])
+        ids.append(r["clip_id"])
     return (
         np.stack(tac_list), np.stack(aud_list), np.stack(vid_list),
         np.array(labels), ids,
@@ -161,20 +212,16 @@ def eval_modality(name, X_train, y_train, X_test, y_test):
     clf.fit(scaler.transform(X_train), y_train)
     pred = clf.predict(scaler.transform(X_test))
     acc = accuracy_score(y_test, pred)
-    return acc, pred, clf
+    return acc, pred, clf, scaler
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--slice-mode", default="half", choices=("half", "idle"))
-    args = parser.parse_args()
-
     ensure_dir(OUT_DOCS_DIR)
-    rows = load_samples(args.slice_mode)
+    tag = "half"
+    rows = load_samples(tag)
     train_rows = [r for r in rows if r["split"] == "train"]
     test_rows = [r for r in rows if r["split"] == "test"]
-    tag = args.slice_mode
-    print(f"Building features for {len(train_rows)} train + {len(test_rows)} test samples ({tag} segments)...")
+    print(f"Building features for {len(train_rows)} train + {len(test_rows)} test samples ({tag} 2 s clips)...")
 
     Xt_tr, Xa_tr, Xv_tr, y_tr, ids_tr = build_feature_table(train_rows)
     Xt_te, Xa_te, Xv_te, y_te, ids_te = build_feature_table(test_rows)
@@ -185,14 +232,33 @@ def main():
         ("audio", Xa_tr, Xa_te),
         ("video", Xv_tr, Xv_te),
     ):
-        acc, pred, _ = eval_modality(name, Xtr, y_tr, Xte, y_te)
+        acc, pred, _, _ = eval_modality(name, Xtr, y_tr, Xte, y_te)
         results[name] = (acc, pred)
         print(f"  {name:8s} solo accuracy: {acc:.3f}")
 
     X_tr_fused = np.concatenate([Xt_tr, Xa_tr, Xv_tr], axis=1)
     X_te_fused = np.concatenate([Xt_te, Xa_te, Xv_te], axis=1)
-    fused_acc, fused_pred, fused_clf = eval_modality("fused", X_tr_fused, y_tr, X_te_fused, y_te)
+    fused_acc, fused_pred, fused_clf, fused_scaler = eval_modality(
+        "fused", X_tr_fused, y_tr, X_te_fused, y_te
+    )
     print(f"  {'fused':8s} accuracy: {fused_acc:.3f}")
+    weights_dir = os.path.join(VISTOUCH_ROOT, "scripts", "tasks", "weights")
+    ensure_dir(weights_dir)
+    weights_path = os.path.join(weights_dir, "classification_random_forest.joblib")
+    joblib.dump(
+        {
+            "model": fused_clf,
+            "scaler": fused_scaler,
+            "classes": CLASS_NAMES,
+            "feature_order": ("tactile", "audio", "video"),
+        },
+        weights_path,
+    )
+    print(f"  saved fused model: {weights_path}")
+    demo_path = os.path.join(OUT_DOCS_DIR, "assets", "classification_demo.gif")
+    ensure_dir(os.path.dirname(demo_path))
+    make_classification_gif(test_rows, fused_clf, fused_scaler, demo_path)
+    print(f"  saved classification demo: {demo_path}")
 
     chance = 1.0 / len(CLASS_NAMES)
     verdict = "USABLE" if fused_acc > 2 * chance else "NEEDS IMPROVEMENT"
@@ -216,7 +282,7 @@ def main():
         "# VisTouch Baseline Classification Report",
         "",
         f"Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = held-out "
-        f"9N sessions. Segment granularity: `{args.slice_mode}`. "
+        f"9N sessions. Clip source phase: `{tag}`; each stored sample is 2.0 s. "
         f"Train samples: {len(train_rows)}, test samples: {len(test_rows)}. Chance level: {chance:.3f}.",
         "",
         "## Per-modality accuracy (RandomForest on hand-rolled features)",
@@ -249,7 +315,7 @@ def main():
             "sound/appearance), which is why they carry most of the fused model's accuracy here. This "
             "is a genuine property of the cross-pressure split (see README.md), not a pipeline "
             "bug -- users who want an easier, same-pressure tactile benchmark can instead build a "
-            "random session-level split instead (group by `session_id` in `metadata/samples.csv` rather "
+            "random session-level split instead (group by `session_id` in `metadata/clips_index.csv` rather "
             "than by `force_n`).",
             "",
         ]
@@ -272,6 +338,7 @@ def main():
         "SOTA benchmark result.",
         "- Train/test are disjoint force levels from disjoint raw recordings, so this also measures "
         "generalization across pressure (3N/6N -> 9N), not just memorization of one recording.",
+        f"- Trained fused model and scaler: `{os.path.relpath(weights_path, VISTOUCH_ROOT).replace(os.sep, '/')}`.",
     ]
 
     report_name = "classification_report.md" if tag == "half" else f"classification_report_{tag}.md"

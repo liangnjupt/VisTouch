@@ -1,20 +1,13 @@
 """Shared data-loading / preprocessing utilities for the VisTouch downstream
-task scripts (cross_modal_generation.py, cross_modal_retrieval.py,
+task scripts (cross_modal_generation.py, multimodal_tactile_completion.py,
 tactile_super_resolution.py).
 
-All three tasks work off fixed-length, time-aligned audio+tactile windows
-cropped from the *same* real sample. The crop is contact-onset aware: the
-tactile force curve is scanned for the first sustained deviation from its
-resting baseline, and the FIXED_SECONDS window starts shortly before that
-onset (falling back to the sample start when no onset is detectable), so
-windows are dominated by actual contact rather than pre-contact idle time.
-The same time offset is applied to both modalities, so a tactile curve and
-its paired audio waveform always correspond to the same physical time
-window of one genuine press-slide event. No synthetic/fake samples are
-introduced anywhere in this module -- only real captures are loaded; any
-on-the-fly corruption (see tactile_super_resolution.py) is purely a
-training-time input transform for a self-supervised task, never written
-back to the released dataset.
+All three tasks use the materialized fixed-length micro-clip tier. Each
+audio/tactile pair comes from the same real 0.5 s source window and has
+already been synchronously interpolated to exactly 2.0 s on disk. Only
+contact (`half`) clips are selected; `idle` clips are excluded. Any
+additional on-the-fly corruption (see tactile_super_resolution.py) is a
+training-time input transform and is never written back to the release.
 """
 from __future__ import annotations
 
@@ -29,12 +22,12 @@ SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-from vistouch_common import CLASS_NAMES, CLASS_TO_ID, SAMPLES_CSV, VISTOUCH_ROOT  # noqa: E402
+from vistouch_common import CLASS_NAMES, CLASS_TO_ID, CLIPS_CSV, VISTOUCH_ROOT  # noqa: E402
 
-FIXED_SECONDS = 5.0
+FIXED_SECONDS = 2.0
 AUDIO_DECIMATE = 4  # 16kHz raw -> 4kHz, enough for envelope/energy-level tasks, much faster to train on
 TACTILE_FS = 100.0
-TACTILE_LEN = int(FIXED_SECONDS * TACTILE_FS)  # 500
+TACTILE_LEN = int(FIXED_SECONDS * TACTILE_FS)  # 200
 
 
 def abspath(rel_path: str) -> str:
@@ -42,12 +35,11 @@ def abspath(rel_path: str) -> str:
 
 
 def load_samples(slice_modes=("half",), splits=("train", "test")):
-    """Select physical segments from metadata/samples.csv.
+    """Select materialized 2 s clips from metadata/clips_index.csv.
 
-    slice_modes: "half" = contact half-wave segments (rise/fall phases of one
-    press-slide envelope oscillation; the benchmark unit), "idle" = the
-    non-contact filler segments that complete the session timeline."""
-    with open(SAMPLES_CSV, "r", encoding="utf-8") as f:
+    slice_modes: "half" = windows from contact rise/fall segments, "idle" =
+    windows from non-contact filler segments."""
+    with open(CLIPS_CSV, "r", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     return [r for r in rows if r["slice_mode"] in slice_modes and r["split"] in splits]
 

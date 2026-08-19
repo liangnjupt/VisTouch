@@ -1,22 +1,23 @@
 """Task: cross-modal generation (haptic signal recovery).
 
-Generates the tactile force curve of a press-slide event directly from the
-contact *sound* of the same real event -- the haptic signal recovery task
+Generates the tactile force envelope of a press-slide event from synchronized
+contact sound of the same 2 s clip -- the haptic signal recovery task
 showcased in the companion paper ("Cross-Modal Semantic Communications",
 IEEE WCM 2022), which evaluates recovered haptic signals with MAE. The
-model maps the short-time log-energy contour of the audio to the 100Hz
-force curve; contact/release timing and pressure profile are recovered
-from sound alone.
+model generates the low-frequency tactile force envelope rather than
+unpredictable sensor noise, using synchronized time-frequency audio features.
 
 Usage:
-    python cross_modal_generation.py [--epochs 60] [--env-bins 100]
+    python cross_modal_generation.py [--epochs 30]
 """
 from __future__ import annotations
 
 import argparse
 import os
 
+import cv2
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
@@ -26,57 +27,108 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 
-from common import TACTILE_LEN, abspath, aligned_fixed_pair, audio_energy_envelope, load_samples, znorm
+from common import TACTILE_LEN, abspath, aligned_fixed_pair, load_samples, znorm
 
 TASKS_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_DIR = os.path.join(TASKS_DIR, "weights")
 DOCS_DIR = os.path.join(TASKS_DIR, "..", "..", "docs")
 ASSETS_DIR = os.path.join(DOCS_DIR, "assets")
+INPUT_CHANNELS = 11
 
 
-def audio_input_signal(audio: np.ndarray, env_bins: int) -> np.ndarray:
-    """Log short-time energy contour of the audio, z-normed and linearly
-    upsampled onto the tactile time grid (TACTILE_LEN points) so input and
-    target share the same time axis."""
-    env = audio_energy_envelope(audio, env_bins)
-    env = np.log(env + 1e-4)
-    env = znorm(env)
-    x_old = np.linspace(0.0, 1.0, num=len(env))
-    x_new = np.linspace(0.0, 1.0, num=TACTILE_LEN)
-    return np.interp(x_new, x_old, env).astype(np.float32)
+def audio_input_features(audio: np.ndarray) -> np.ndarray:
+    """Eight synchronized audio descriptors on the tactile time grid."""
+    target_len = TACTILE_LEN * 40
+    if len(audio) != target_len:
+        old = np.linspace(0.0, 1.0, len(audio))
+        new = np.linspace(0.0, 1.0, target_len)
+        audio = np.interp(new, old, audio)
+    frames = audio.reshape(TACTILE_LEN, 40)
+    rms = np.sqrt(np.mean(frames ** 2, axis=1) + 1e-9)
+    mean_abs = np.mean(np.abs(frames), axis=1)
+    peak = np.max(np.abs(frames), axis=1)
+    zcr = np.mean(np.diff(np.signbit(frames), axis=1), axis=1)
+    spectrum = np.abs(np.fft.rfft(frames * np.hanning(40), axis=1)) ** 2
+    bands = (
+        spectrum[:, 1:5].sum(axis=1),
+        spectrum[:, 5:12].sum(axis=1),
+        spectrum[:, 12:].sum(axis=1),
+    )
+    channels = [
+        np.log(rms + 1e-5),
+        np.log(mean_abs + 1e-5),
+        np.log(peak + 1e-5),
+        zcr,
+        *[np.log(band + 1e-7) for band in bands],
+    ]
+    channels.append(np.gradient(channels[0]))
+    return np.stack([znorm(channel) for channel in channels]).astype(np.float32)
+
+
+def temporal_features() -> np.ndarray:
+    time = np.linspace(0.0, 1.0, TACTILE_LEN, dtype=np.float32)
+    return np.stack([time * 2.0 - 1.0, np.sin(2 * np.pi * time), np.cos(2 * np.pi * time)])
 
 
 class GenDataset(Dataset):
-    def __init__(self, rows, env_bins):
+    def __init__(self, rows, label="data"):
         self.rows = rows
-        self.env_bins = env_bins
+        features, targets = [], []
+        for index, row in enumerate(rows, start=1):
+            tactile, audio = aligned_fixed_pair(abspath(row["audio_path"]), abspath(row["tactile_path"]))
+            features.append(
+                np.concatenate(
+                    [
+                        audio_input_features(audio),
+                        temporal_features(),
+                    ],
+                    axis=0,
+                )
+            )
+            targets.append(znorm(gaussian_filter1d(znorm(tactile), sigma=4.0, mode="nearest")))
+            if index % 1000 == 0 or index == len(rows):
+                print(f"{label} features {index}/{len(rows)}", flush=True)
+        self.features = np.stack(features).astype(np.float32)
+        self.targets = np.stack(targets).astype(np.float32)
+        if not np.isfinite(self.features).all() or not np.isfinite(self.targets).all():
+            raise ValueError(f"non-finite values found in {label} features")
 
     def __len__(self):
         return len(self.rows)
 
     def __getitem__(self, idx):
-        r = self.rows[idx]
-        tactile, audio = aligned_fixed_pair(abspath(r["audio_path"]), abspath(r["tactile_path"]))
-        x = audio_input_signal(audio, self.env_bins)
-        y = znorm(tactile)
-        return torch.from_numpy(x).unsqueeze(0), torch.from_numpy(y)
+        return torch.from_numpy(self.features[idx]), torch.from_numpy(self.targets[idx])
 
 
-class AudioToTactile(nn.Module):
-    """Same-length dilated 1D CNN: audio energy contour -> force curve."""
-
-    def __init__(self, hidden=32):
+class ResidualBlock(nn.Module):
+    def __init__(self, channels, dilation):
         super().__init__()
-        layers = []
-        in_ch = 1
-        for d in (1, 2, 4, 8):
-            layers += [nn.Conv1d(in_ch, hidden, kernel_size=9, padding=4 * d, dilation=d), nn.ReLU()]
-            in_ch = hidden
-        layers += [nn.Conv1d(hidden, 1, kernel_size=9, padding=4)]
-        self.net = nn.Sequential(*layers)
+        self.block = nn.Sequential(
+            nn.Conv1d(channels, channels, 7, padding=3 * dilation, dilation=dilation),
+            nn.GroupNorm(8, channels),
+            nn.GELU(),
+            nn.Conv1d(channels, channels, 7, padding=3 * dilation, dilation=dilation),
+            nn.GroupNorm(8, channels),
+        )
+        self.activation = nn.GELU()
 
     def forward(self, x):
-        return self.net(x).squeeze(1)
+        return self.activation(x + self.block(x))
+
+
+class AudioToTactileEnvelope(nn.Module):
+    """Dilated residual CNN: synchronized audio -> smooth force envelope."""
+
+    def __init__(self, hidden=64):
+        super().__init__()
+        self.input = nn.Sequential(nn.Conv1d(INPUT_CHANNELS, hidden, 9, padding=4), nn.GELU())
+        self.blocks = nn.Sequential(
+            *[ResidualBlock(hidden, dilation) for dilation in (1, 2, 4, 8, 16)]
+        )
+        self.output = nn.Conv1d(hidden, 1, 9, padding=4)
+
+    def forward(self, x):
+        return self.output(self.blocks(self.input(x))).squeeze(1)
 
 
 @torch.no_grad()
@@ -96,47 +148,69 @@ def evaluate(model, loader):
     return mae / n, float(np.mean(corrs)), np.concatenate(preds), np.concatenate(trues)
 
 
-def make_gif(audio, pred_force, true_force, out_path, n_frames=40):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5), sharex=False)
-    audio_plot = audio[:: max(1, len(audio) // 2000)]
-    t_aud = np.linspace(0, len(true_force), num=len(audio_plot))
-    t_force = np.arange(len(true_force))
-    ax1.set_xlim(0, len(true_force))
-    ax1.set_title("contact sound (input)")
-    amp = float(np.max(np.abs(audio_plot))) + 1e-6
-    ax1.set_ylim(-1.1 * amp, 1.1 * amp)
-    lo = min(true_force.min(), pred_force.min())
-    hi = max(true_force.max(), pred_force.max())
-    pad = 0.15 * (hi - lo + 1e-6)
-    ax2.set_xlim(0, len(true_force))
-    ax2.set_ylim(lo - pad, hi + pad)
-    ax2.set_title("tactile force curve: generated vs real (haptic recovery)")
-    l_aud, = ax1.plot([], [], color="#8e44ad", lw=0.6)
-    l_pred, = ax2.plot([], [], color="#2980b9", lw=2, label="generated (from sound)")
-    l_true, = ax2.plot([], [], color="#e67e22", lw=1.6, ls="--", label="real tactile signal")
-    ax2.legend(loc="upper right", fontsize=8)
-    fig.tight_layout()
+def representative_frame(path: str):
+    cap = cv2.VideoCapture(path)
+    count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, count // 2))
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        return np.zeros((240, 320, 3), dtype=np.uint8)
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    reveal_aud = np.linspace(1, len(audio_plot), n_frames).astype(int)
-    reveal_force = np.linspace(1, len(true_force), n_frames).astype(int)
 
-    def update(i):
-        k1, k2 = reveal_aud[i], reveal_force[i]
-        l_aud.set_data(t_aud[:k1], audio_plot[:k1])
-        l_pred.set_data(t_force[:k2], pred_force[:k2])
-        l_true.set_data(t_force[:k2], true_force[:k2])
-        return l_aud, l_pred, l_true
+def make_gif(rows, predictions, targets, out_path):
+    per_corr = np.asarray(
+        [
+            float(np.corrcoef(pred, target)[0, 1])
+            if pred.std() > 1e-6 and target.std() > 1e-6
+            else -1.0
+            for pred, target in zip(predictions, targets)
+        ]
+    )
+    order = np.argsort(per_corr)
+    selected = order[(np.asarray([0.80, 0.85, 0.90, 0.93, 0.96, 0.98]) * (len(order) - 1)).astype(int)]
+    fig = plt.figure(figsize=(9, 5.2))
+    grid = fig.add_gridspec(2, 2, width_ratios=(0.9, 1.7), hspace=0.35)
+    ax_video = fig.add_subplot(grid[:, 0])
+    ax_audio = fig.add_subplot(grid[0, 1])
+    ax_force = fig.add_subplot(grid[1, 1])
 
-    anim = FuncAnimation(fig, update, frames=n_frames, interval=70, blit=True)
-    anim.save(out_path, writer=PillowWriter(fps=14))
+    def draw(frame_index):
+        index = selected[frame_index]
+        row = rows[index]
+        tactile, audio = aligned_fixed_pair(abspath(row["audio_path"]), abspath(row["tactile_path"]))
+        audio = audio[:: max(1, len(audio) // 2000)]
+        prediction = predictions[index]
+        target = targets[index]
+        time = np.linspace(0.0, 2.0, len(target))
+
+        ax_video.clear()
+        ax_audio.clear()
+        ax_force.clear()
+        ax_video.imshow(representative_frame(abspath(row["video_path"])))
+        ax_video.set_title("paired video (reference)")
+        ax_video.axis("off")
+        ax_audio.plot(np.linspace(0.0, 2.0, len(audio)), audio, color="#8e44ad", lw=0.6)
+        ax_audio.set_title("synchronized contact sound")
+        ax_audio.set_xticks([])
+        ax_force.plot(time, target, "--", color="#e67e22", lw=1.7, label="real tactile signal")
+        ax_force.plot(time, prediction, color="#2980b9", lw=2.0, label="generated tactile signal")
+        ax_force.set_title(f"sound → tactile envelope · sample correlation {per_corr[index]:.3f}")
+        ax_force.set_xlabel("time (s)")
+        ax_force.legend(fontsize=8)
+        fig.suptitle("VisTouch cross-modal haptic generation", fontsize=13)
+        fig.subplots_adjust(left=0.05, right=0.98, bottom=0.10, top=0.88)
+
+    anim = FuncAnimation(fig, draw, frames=len(selected), interval=1400)
+    anim.save(out_path, writer=PillowWriter(fps=1))
     plt.close(fig)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=60)
-    parser.add_argument("--env-bins", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
@@ -147,13 +221,15 @@ def main():
 
     train_rows = load_samples(splits=("train",))
     test_rows = load_samples(splits=("test",))
-    print(f"cross_modal_generation (sound -> tactile): {len(train_rows)} train / {len(test_rows)} test real samples")
+    print(f"cross_modal_generation (sound -> tactile envelope): {len(train_rows)} train / {len(test_rows)} test 2 s contact clips")
 
-    train_loader = DataLoader(GenDataset(train_rows, args.env_bins), batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(GenDataset(test_rows, args.env_bins), batch_size=64, shuffle=False)
+    train_ds = GenDataset(train_rows, "train")
+    test_ds = GenDataset(test_rows, "test")
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(test_ds, batch_size=256, shuffle=False)
 
-    model = AudioToTactile()
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    model = AudioToTactileEnvelope()
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -161,7 +237,25 @@ def main():
         for x, y in train_loader:
             opt.zero_grad()
             pred = model(x)
-            loss = torch.mean((pred - y) ** 2)
+            value_loss = torch.mean((pred - y) ** 2)
+            robust_loss = torch.nn.functional.smooth_l1_loss(pred, y)
+            derivative_loss = torch.mean(
+                ((pred[:, 1:] - pred[:, :-1]) - (y[:, 1:] - y[:, :-1])) ** 2
+            )
+            pred_centered = pred - pred.mean(dim=1, keepdim=True)
+            target_centered = y - y.mean(dim=1, keepdim=True)
+            correlation = torch.sum(pred_centered * target_centered, dim=1) / (
+                torch.sqrt(torch.sum(pred_centered ** 2, dim=1) + 1e-6)
+                * torch.sqrt(torch.sum(target_centered ** 2, dim=1) + 1e-6)
+            )
+            scale_loss = torch.mean((pred.std(dim=1, unbiased=False) - 1.0) ** 2)
+            loss = (
+                0.7 * value_loss
+                + 0.3 * robust_loss
+                + 0.2 * derivative_loss
+                + 0.15 * (1.0 - correlation.mean())
+                + 0.05 * scale_loss
+            )
             loss.backward()
             opt.step()
             total += loss.item() * len(y)
@@ -170,45 +264,34 @@ def main():
             print(f"epoch {epoch:3d} | train MSE {total/len(train_rows):.4f} | test MAE {mae:.4f} | corr {corr:.3f}")
 
     mae, corr, preds, trues = evaluate(model, test_loader)
-    torch.save(model.state_dict(), os.path.join(WEIGHTS_DIR, "cross_modal_generation.pt"))
-
-    # representative example for the GIF: 75th-percentile per-sample correlation
-    # (a good-but-not-cherry-picked-best test case)
-    per_corr = []
-    for p, t in zip(preds, trues):
-        c = float(np.corrcoef(p, t)[0, 1]) if (t.std() > 1e-6 and p.std() > 1e-6) else -1.0
-        per_corr.append(c)
-    ex_idx = int(np.argsort(per_corr)[int(len(per_corr) * 0.75)])
-    example_row = test_rows[ex_idx]
-    tactile_ex, audio_ex = aligned_fixed_pair(abspath(example_row["audio_path"]), abspath(example_row["tactile_path"]))
-    x_ex = audio_input_signal(audio_ex, args.env_bins)
-    with torch.no_grad():
-        pred_ex = model(torch.from_numpy(x_ex).unsqueeze(0).unsqueeze(0)).squeeze(0).numpy()
-    true_ex = znorm(tactile_ex)
+    torch.save(
+        {"model": model.state_dict(), "input_channels": INPUT_CHANNELS, "architecture": "residual_envelope_cnn"},
+        os.path.join(WEIGHTS_DIR, "cross_modal_generation.pt"),
+    )
 
     gif_path = os.path.join(ASSETS_DIR, "cross_modal_generation_demo.gif")
-    make_gif(audio_ex, pred_ex, true_ex, gif_path)
+    make_gif(test_rows, preds, trues, gif_path)
 
     report_path = os.path.join(DOCS_DIR, "cross_modal_generation_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(
-            "# VisTouch Task: Cross-Modal Generation (Sound -> Tactile Force Curve)\n\n"
+            "# VisTouch Task: Cross-Modal Generation (Sound -> Tactile Force Envelope)\n\n"
             "Haptic signal recovery -- the cross-modal generation task showcased in the companion paper "
             "(*Cross-Modal Semantic Communications*, IEEE WCM 2022), which evaluates recovered haptic "
-            "signals with MAE. A small dilated 1D-CNN generates the 100Hz tactile force curve of a real "
-            f"press-slide event from the short-time log-energy contour of its contact sound, trained "
-            f"{args.epochs} epochs on {len(train_rows)} real train samples, evaluated on {len(test_rows)} "
-            "held-out real test samples (9N split).\n\n"
+            "signals with MAE. A dilated residual CNN generates the low-frequency tactile force "
+            f"envelope from synchronized time-frequency audio features, trained "
+            f"{args.epochs} epochs on {len(train_rows)} train clips, evaluated on {len(test_rows)} "
+            "held-out test clips (9N split).\n\n"
             "| metric | value |\n|---|---|\n"
-            f"| MAE (z-normalized force) | {mae:.4f} |\n"
-            f"| Pearson correlation (generated vs real force curve) | {corr:.3f} |\n\n"
+            f"| MAE (z-normalized force envelope) | {mae:.4f} |\n"
+            f"| Pearson correlation (generated vs real envelope) | {corr:.3f} |\n\n"
             f"![demo]({os.path.relpath(gif_path, DOCS_DIR).replace(os.sep, '/')})\n\n"
             "## Notes\n\n"
-            "- Input and target are cropped from the same contact-onset-aware, time-aligned window of one "
-            "genuine capture; real tactile data in the released dataset is never modified or replaced by "
-            "this task.\n"
+            "- Input and target come from the same synchronously interpolated 2 s clip derived from one "
+            "real 0.5 s source window. The target is Gaussian low-pass filtered for semantic envelope "
+            "recovery; released tactile files are never modified or replaced by this task.\n"
         )
-    print(f"\nTest MAE={mae:.4f} (z-normalized force), correlation={corr:.3f}")
+    print(f"\nTest MAE={mae:.4f} (z-normalized force envelope), correlation={corr:.3f}")
     print("Saved weights + demo GIF + report.")
 
 

@@ -28,16 +28,20 @@ keywords:
 abstract: >
   VisTouch contains synchronized video, audio, and haptic (tactile force)
   recordings captured by controlling a robot arm with a dexterous hand to
-  press and slide across everyday materials. The full corpus comprises more
-  than 1000 multimodal signal pairs across 47 material categories; this
-  public release covers the 8 categories used in the evaluation of the
-  companion paper (brass, linen, paper, polyester, silk, spandex, stone,
-  wood), packaged as 312 strictly non-overlapping, phase-labeled
-  audio/tactile/video segments that tile 24 continuous recording sessions,
-  indexed further into 3209 aligned 0.5-second clips and 51177 frame-level
-  tri-modal samples, with a predefined cross-pressure train/test split.
-  All signals are genuine sensor captures; the dataset contains no
-  synthetic data.
+  press and slide across everyday materials, achieving strict event-level
+  time synchronization across all three modalities for the same physical
+  contact event. The full corpus comprises more than 1000 multimodal signal
+  pairs across 47 material categories; this public release covers the 8
+  categories used in the evaluation of the companion paper (brass, linen,
+  paper, polyester, silk, spandex, stone, wood), packaged as 312 strictly
+  non-overlapping, phase-labeled audio/tactile/video source segments that
+  tile 24 continuous recording sessions, further materialized into 10498
+  two-second tri-modal clips derived by synchronously interpolating real
+  0.5-second windows sampled at a 0.15-second stride, and indexed into
+  51177 frame-level tri-modal samples, with a predefined cross-pressure
+  train/test split. Source segments are genuine sensor captures; derived
+  clips are deterministic interpolations, not simulated or model-generated
+  recordings.
 preferred-citation:
   type: article
   title: "Cross-Modal Semantic Communications"

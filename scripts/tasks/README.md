@@ -5,16 +5,14 @@ Benchmarks section of the main `README.md` for results, demo GIFs, and
 logs):
 
 - `common.py` — shared loading utilities used by all three scripts:
-  fixed-length (5s), contact-onset-aware, time-aligned audio/tactile
-  windows cropped from the same real sample (the window starts shortly
-  before the first sustained tactile contact, so crops are dominated by
-  actual contact rather than pre-contact idle time; no synthetic data is
-  introduced anywhere here).
+  fixed-length 2 s, time-aligned audio/tactile clips loaded directly from
+  the materialized public tier. Only contact clips are selected; every
+  pair shares the same source epoch and 4x interpolation mapping.
 - `tactile_super_resolution.py` — reconstruct a clean, high-rate tactile
   force curve from a low-rate / noisy input.
-- `cross_modal_retrieval.py` — contrastive audio↔tactile embedding +
-  retrieval.
-- `cross_modal_generation.py` — generate the tactile force curve directly
+- `multimodal_tactile_completion.py` — reconstruct a contiguous missing
+  tactile block from synchronized audio, video, and surrounding touch.
+- `cross_modal_generation.py` — generate the low-frequency tactile force envelope
   from the contact sound (the haptic signal recovery task showcased in the
   companion paper, evaluated with MAE).
 

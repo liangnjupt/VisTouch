@@ -1,0 +1,39 @@
+VisTouch 2 s micro-clip materialization
+=======================================
+Source: 312 released physical segments (dataset/{audio,tactile,video}/*)
+Window: 0.50 s
+Stride: 0.15 s (0.35 s / 70% overlap)
+Stored duration: 2.00 s
+Stretch factor: 4.0x
+
+Every audio/tactile/video triplet is first cut at the same source epoch
+pair, then stretched through the same linear temporal mapping:
+  - video:   60 interpolated frames at 30 fps
+  - audio:   32,000 interpolated waveform samples at 16 kHz
+  - tactile: 200 interpolated force values at 100 Hz
+
+Build result
+------------
+parents processed: 312/312
+clips written: 10,498
+train/test: 7,019 / 3,479
+file counts: audio=10,498, tactile=10,498, video=10,498
+output replacement: successful
+
+Verification samples: index 0, 1, 5,249, and 10,497
+  video:   60 frames @ 30.0 fps = 2.0 s
+  audio:   32,000 samples @ 16,000 Hz = 2.0 s
+  tactile: 200 values @ 100 Hz = 2.0 s
+
+Naming example
+--------------
+clip_id: brass_000001
+video:   brass_video_000001.avi
+audio:   brass_audio_000001.wav
+tactile: brass_tactile_000001.csv
+
+Provenance note
+---------------
+The 312 source segments are genuine sensor captures. Micro-clips are
+deterministic interpolated augmentations of real windows, not additional
+independent captures and not simulated/model-generated recordings.

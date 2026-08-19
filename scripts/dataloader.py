@@ -1,30 +1,33 @@
 """VisTouch dataset loader.
 
 A thin, dependency-light `torch.utils.data.Dataset` over the exported
-VisTouch/ tree (metadata/samples.csv + audio/tactile/video files), letting
+VisTouch/ tree (metadata/clips_index.csv + audio/tactile/video files), letting
 users select:
   - which material class(es) to load (`classes=["silk", "stone"]`, or None
     for all 8 classes)
   - which modality/modalities to load (`modalities=("audio", "tactile")`)
   - which split (`split="train" | "test" | "val" | "all"`)
-  - which slice mode (`slice_modes=("half",)` for the contact half-wave
-    segments used by the benchmarks, or `"idle"` for the non-contact filler
-    segments; all segments are strictly non-overlapping and tile the valid
-    tri-modal timeline of the 24 raw sessions)
 
-For denser training views, `metadata/clips_index.csv` (0.5 s non-overlapping
-clips) and `metadata/frames_index.csv` (per-video-frame tri-modal alignment)
-index into the same segment files by time offset.
+For denser training views, `metadata/clips_index.csv` lists **10,498
+materialized micro-clips**: overlapping 0.5 s windows (0.15 s stride)
+physically extracted from the 312 segments and synchronously interpolated
+to exactly 2.0 s under `dataset/{audio,tactile,video}/` (not computed
+at read time). Video, audio, and tactile are all stretched by the same 4x
+time mapping to 60 frames at 30 fps, 32,000 samples at 16 kHz, and 200
+values at 100 Hz. Use `VisTouchClipDataset` below to load this tier.
+`metadata/frames_index.csv` remains a lightweight provenance index into the
+312 unaltered segment files stored in the separate source archive.
 
-Every sample in VisTouch is a genuine camera/microphone/tactile-sensor
-capture -- there is no synthetic/generated data in this release.
+The 312 source segments are genuine camera/microphone/tactile-sensor
+captures. Micro-clips are deterministic interpolated views of those real
+signals, not simulated or model-generated recordings.
 
 Example (library use):
 
-    from dataloader import VisTouchDataset, get_dataloader
+    from dataloader import VisTouchClipDataset, get_dataloader
 
-    ds = VisTouchDataset(classes=["silk", "stone"], modalities=("audio", "tactile"))
-    loader = get_dataloader(ds, batch_size=8, shuffle=True)
+    clips = VisTouchClipDataset(classes=["silk", "stone"])  # 10,498 micro-clips
+    loader = get_dataloader(clips, batch_size=8, shuffle=True)
 
 Example (CLI):
 
@@ -193,6 +196,81 @@ class VisTouchDataset(Dataset):
         return item
 
 
+class VisTouchClipDataset(Dataset):
+    """PyTorch Dataset over the 10,498 materialized VisTouch micro-clips.
+
+    Each item comes from a real 0.5 s source window (0.15 s stride) and is
+    synchronously interpolated to exactly 2.0 s: 60 video frames at 30 fps,
+    32,000 audio samples at 16 kHz, and 200 tactile values at 100 Hz. See
+    `metadata/clips_index.csv` and `docs/logs/microclip_build.log`.
+
+    Args:
+        root: path to the VisTouch/ release directory.
+        classes: iterable of material names/ids to include, or None for all.
+        modalities: subset of ("audio", "tactile", "video").
+        split: "train", "test", or "all".
+    """
+
+    def __init__(
+        self,
+        root: str = VISTOUCH_ROOT,
+        classes: Optional[Sequence[str]] = None,
+        modalities: Sequence[str] = ALL_MODALITIES,
+        split: str = "all",
+    ):
+        self.root = root
+        self.modalities = tuple(modalities)
+        for m in self.modalities:
+            if m not in ALL_MODALITIES:
+                raise ValueError(f"Unknown modality '{m}', expected subset of {ALL_MODALITIES}")
+
+        wanted_classes = _normalize_classes(classes)
+        clips_csv = os.path.join(root, "metadata", "clips_index.csv")
+        with open(clips_csv, "r", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        def keep(r):
+            if wanted_classes is not None and r["material_english"] not in wanted_classes:
+                return False
+            if split != "all" and r["split"] != split:
+                return False
+            return True
+
+        self.clips = [r for r in rows if keep(r)]
+        if not self.clips:
+            raise ValueError(
+                f"No micro-clips matched classes={classes}, split={split}. "
+                f"Valid classes: {CLASS_NAMES}"
+            )
+
+    def __len__(self):
+        return len(self.clips)
+
+    def classes_present(self):
+        return sorted({r["material_english"] for r in self.clips})
+
+    def __getitem__(self, idx):
+        r = self.clips[idx]
+        item = {
+            "clip_id": r["clip_id"],
+            "sample_id": r["sample_id"],
+            "material": r["material_english"],
+            "label": CLASS_TO_ID[r["material_english"]],
+            "force_n": int(r["force_n"]),
+            "split": r["split"],
+            "source_duration_s": float(r["source_duration_s"]),
+            "stored_duration_s": float(r["stored_duration_s"]),
+            "stretch_factor": float(r["stretch_factor"]),
+        }
+        if "audio" in self.modalities:
+            item["audio"] = load_wav(os.path.join(self.root, *r["audio_path"].split("/")))
+        if "tactile" in self.modalities:
+            item["tactile"] = load_tactile(os.path.join(self.root, *r["tactile_path"].split("/")))
+        if "video" in self.modalities:
+            item["video"] = load_video(os.path.join(self.root, *r["video_path"].split("/")))
+        return item
+
+
 def collate_variable_length(batch):
     """Default collate_fn: stacks scalar fields, keeps variable-length
     audio/tactile/video sequences as a list (they differ by a few samples
@@ -204,6 +282,8 @@ def collate_variable_length(batch):
         "force_n": [b["force_n"] for b in batch],
         "split": [b["split"] for b in batch],
     }
+    if "clip_id" in batch[0]:
+        out["clip_id"] = [b["clip_id"] for b in batch]
     for key in ("audio", "tactile", "video"):
         if key in batch[0]:
             out[key] = [b[key] for b in batch]
@@ -221,15 +301,13 @@ def _main():
     parser.add_argument("--classes", nargs="*", default=None, help=f"subset of {CLASS_NAMES} (default: all)")
     parser.add_argument("--modalities", nargs="*", default=list(ALL_MODALITIES), choices=ALL_MODALITIES)
     parser.add_argument("--split", default="all", choices=("all", "train", "val", "test"))
-    parser.add_argument("--slice-modes", nargs="*", default=["half"], choices=("half", "idle"))
     parser.add_argument("--batch-size", type=int, default=4)
     args = parser.parse_args()
 
-    ds = VisTouchDataset(
+    ds = VisTouchClipDataset(
         classes=args.classes,
         modalities=tuple(args.modalities),
         split=args.split,
-        slice_modes=tuple(args.slice_modes),
     )
     print(f"Loaded {len(ds)} samples. Classes present: {ds.classes_present()}")
 
@@ -237,6 +315,8 @@ def _main():
         loader = get_dataloader(ds, batch_size=args.batch_size, shuffle=True)
         batch = next(iter(loader))
         print("First batch:")
+        if "clip_id" in batch:
+            print("  clip_id  :", batch["clip_id"])
         print("  sample_id:", batch["sample_id"])
         print("  material :", batch["material"])
         print("  label    :", batch["label"])

@@ -29,10 +29,15 @@ OUT_AUDIO_DIR = os.path.join(OUT_DATASET_DIR, "audio")
 OUT_TACTILE_DIR = os.path.join(OUT_DATASET_DIR, "tactile")
 OUT_VIDEO_DIR = os.path.join(OUT_DATASET_DIR, "video")
 
+# The 312 source segments are archived outside the public dataset directory.
+ARCHIVE_DATASET_DIR = os.path.abspath(
+    os.path.join(VISTOUCH_ROOT, "..", "dataset20260818")
+)
+
 SAMPLES_CSV = os.path.join(OUT_METADATA_DIR, "samples.csv")
 SESSIONS_CSV = os.path.join(OUT_METADATA_DIR, "sessions.csv")
 CLASSES_JSON = os.path.join(OUT_METADATA_DIR, "classes.json")
-CLIPS_CSV = os.path.join(OUT_METADATA_DIR, "clips_index.csv")     # 0.5 s non-overlapping clips
+CLIPS_CSV = os.path.join(OUT_METADATA_DIR, "clips_index.csv")     # 10,498 materialized 2s micro-clips
 FRAMES_CSV = os.path.join(OUT_METADATA_DIR, "frames_index.csv")   # per-video-frame tri-modal index
 
 DATASET_NAME = "VisTouch"

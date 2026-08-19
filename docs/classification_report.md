@@ -1,39 +1,35 @@
 # VisTouch Baseline Classification Report
 
-Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = held-out 9N sessions. Segment granularity: `half`. Train samples: 160, test samples: 80. Chance level: 0.125.
+Task: 8-class material recognition. Split: train = force 3N+6N sessions, test = held-out 9N sessions. Clip source phase: `half`; each stored sample is 2.0 s. Train samples: 5049, test samples: 2506. Chance level: 0.125.
 
 ## Per-modality accuracy (RandomForest on hand-rolled features)
 
 | modality | test accuracy |
 |---|---|
-| tactile | 0.175 |
-| audio | 0.512 |
-| video | 0.475 |
-| **fused (all 3)** | **0.725** |
+| tactile | 0.194 |
+| audio | 0.516 |
+| video | 0.512 |
+| **fused (all 3)** | **0.654** |
 
 **Verdict: USABLE** (fused accuracy exceeds 2x chance level of 0.125).
-
-### Diagnostic note on near-chance modalities
-
-`tactile` performed close to chance level in isolation under this particular train/test split (train = 3N/6N sessions, test = held-out 9N sessions). For tactile in particular this is expected rather than a data defect: the raw force reading is driven primarily by *how hard the probe presses* (3N vs 6N vs 9N), so a classifier trained only on 3N/6N tactile signals is effectively asked to generalize across an unseen pressure regime, which is a harder and different task than material recognition at a fixed pressure. Audio and video are comparatively pressure-invariant (texture-driven sound/appearance), which is why they carry most of the fused model's accuracy here. This is a genuine property of the cross-pressure split (see README.md), not a pipeline bug -- users who want an easier, same-pressure tactile benchmark can instead build a random session-level split instead (group by `session_id` in `metadata/samples.csv` rather than by `force_n`).
 
 ## Fused-model classification report (test set)
 
 ```
               precision    recall  f1-score   support
 
-       brass       1.00      0.10      0.18        10
-       linen       1.00      0.90      0.95        10
-       paper       0.50      0.80      0.62        10
-   polyester       0.56      0.90      0.69        10
-        silk       1.00      0.30      0.46        10
-     spandex       0.62      1.00      0.77        10
-       stone       0.91      1.00      0.95        10
-        wood       1.00      0.80      0.89        10
+       brass       1.00      0.62      0.77       311
+       linen       0.88      0.64      0.74       327
+       paper       0.39      0.65      0.49       310
+   polyester       0.90      0.98      0.94       311
+        silk       0.07      0.03      0.04       313
+     spandex       0.92      0.83      0.87       312
+       stone       0.53      0.86      0.66       311
+        wood       0.67      0.62      0.64       311
 
-    accuracy                           0.72        80
-   macro avg       0.82      0.73      0.69        80
-weighted avg       0.82      0.72      0.69        80
+    accuracy                           0.65      2506
+   macro avg       0.67      0.65      0.64      2506
+weighted avg       0.67      0.65      0.64      2506
 
 ```
 
@@ -45,3 +41,4 @@ weighted avg       0.82      0.72      0.69        80
 
 - Features are intentionally simple/hand-rolled (no librosa/deep features) so the script runs with only numpy/scipy/opencv/sklearn -- this is a *usability sanity check*, not a SOTA benchmark result.
 - Train/test are disjoint force levels from disjoint raw recordings, so this also measures generalization across pressure (3N/6N -> 9N), not just memorization of one recording.
+- Trained fused model and scaler: `scripts/tasks/weights/classification_random_forest.joblib`.
